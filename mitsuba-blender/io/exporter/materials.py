@@ -1,5 +1,5 @@
 import numpy as np
-from mathutils import Matrix
+from mathutils import Matrix, Color
 from .export_context import Files
 
 RoughnessMode = {'GGX': 'ggx', 'BECKMANN': 'beckmann', 'ASHIKHMIN_SHIRLEY':'beckmann', 'MULTI_GGX':'ggx'}
@@ -20,6 +20,8 @@ def export_texture_node(export_ctx, tex_node):
 
     return params
 
+
+
 def convert_float_texture_node(export_ctx, socket):
     params = None
 
@@ -28,6 +30,10 @@ def convert_float_texture_node(export_ctx, socket):
 
         if node.type == "TEX_IMAGE":
             params = export_texture_node(export_ctx, node)
+        #TODO: texture transform (color_ramp node)
+        elif node.type == "VALTORGB":
+            print(0)
+            raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
         else:
             raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
 
@@ -49,8 +55,12 @@ def convert_color_texture_node(export_ctx, socket):
             params = export_texture_node(export_ctx, node)
 
         elif node.type == "RGB":
-            #input rgb node
-            params = export_ctx.spectrum(node.color)
+            # input rgb node
+            # node.color is a function to get custom color of the node body not base_color!!!!!!
+            # params = export_ctx.spectrum(node.color)
+            base_color = list(node.outputs['Color'].default_value)
+            params = export_ctx.spectrum(Color((base_color[0], base_color[1], base_color[2])))
+
         elif node.type == "VERTEX_COLOR":
             params = {
                 'type': 'mesh_attribute',
