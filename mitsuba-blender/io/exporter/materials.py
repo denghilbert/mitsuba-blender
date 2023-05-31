@@ -21,6 +21,20 @@ def export_texture_node(export_ctx, tex_node):
     return params
 
 
+def export_color_ramp_node(export_ctx, tex_node):
+    params = {
+        'type':'bitmap'
+    }
+    #get the relative path to the copied texture from the full path to the original texture
+    params['filename'] = export_ctx.export_texture(tex_node.image)
+    #TODO: texture transform (mapping node)
+    if tex_node.image.colorspace_settings.name in ['Non-Color', 'Raw', 'Linear']:
+        #non color data, tell mitsuba not to apply gamma conversion to it
+        params['raw'] = True
+    elif tex_node.image.colorspace_settings.name != 'sRGB':
+        export_ctx.log("Mitsuba only supports sRGB textures for color data.", 'WARN')
+
+    return params
 
 def convert_float_texture_node(export_ctx, socket):
     params = None
@@ -32,6 +46,9 @@ def convert_float_texture_node(export_ctx, socket):
             params = export_texture_node(export_ctx, node)
         #TODO: texture transform (color_ramp node)
         elif node.type == "VALTORGB":
+            color_ramp = node.color_ramp
+            tex_node = node.inputs['Fac'].links[0].from_node
+            params = export_color_ramp_node(export_ctx, tex_node) # currently it's identical to export_texture_node()
             print(0)
             raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
         else:
