@@ -143,7 +143,7 @@ class ExportContext:
             msg = "Image format of '%s' is not supported. Converting it to %s." % (image.name, convert_format[image.file_format])
             self.log(msg, 'WARN')
             image.file_format = convert_format[image.file_format]
-        original_name = os.path.basename(image.filepath)
+        original_name = os.path.basename(image.filepath.replace('\\', '//'))
         if original_name != '' and image.name.startswith(original_name): # Try to remove extensions from names of packed files to avoid stuff like 'Image.png.001.png'
             base_name, _ = os.path.splitext(original_name)
             name = image.name.replace(original_name, base_name, 1) # Remove the extension
