@@ -22,6 +22,7 @@ def export_texture_node(export_ctx, tex_node):
     return params
 
 
+
 def export_color_ramp_node(export_ctx, tex_node):
     params = {
         'type':'bitmap'
@@ -64,6 +65,23 @@ def roughness_ramp(node, color_ramp, export_ctx):
 
     return params
 
+def bump_normal(node, export_ctx):
+    #TODO mitsuba has invert bump mapping?
+    if_invert = node.invert
+    #TODO Figure out how to use distance and strength.... what exactly is full bump mapping???
+    strength = node.inputs['Strength'].default_value
+    distance = node.inputs['Distance'].default_value
+    tex_node = node.inputs['Height'].links[0].from_node
+
+    bump_value = np.array(tex_node.image.pixels[:]) * 0.9
+    bump_value[::-4] = 1.
+    tex_node.image.pixels[:] = tuple(bump_value)
+    params = export_texture_node(export_ctx, tex_node)
+    bump_value = bump_value / 0.9
+    bump_value[::-4] = 1.
+    tex_node.image.pixels[:] = tuple(bump_value)
+
+    return params
 
 def convert_float_texture_node(export_ctx, socket):
     params = None
@@ -83,13 +101,16 @@ def convert_float_texture_node(export_ctx, socket):
                     raise NotImplementedError( "Other interpolation convertor except LINEAR is not supported yet.")
             else:
                 raise NotImplementedError( "Other convertor except ColorRamp is not supported yet.")
-
+        elif node.type == 'BUMP':
+            params = bump_normal(node, export_ctx)
         else:
             raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
 
     else:
         if socket.name == 'Roughness':#roughness values in blender are remapped with a square root
             params = pow(socket.default_value, 2)
+        if socket.name == 'Normal':
+            params = None
         else:
             params = socket.default_value
 
@@ -333,7 +354,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     clearcoat_roughness = convert_float_texture_node(export_ctx, current_node.inputs['Clearcoat Roughness'])
 
     # warp principled_materials with bump or normal map
-    # bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
+    bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
     #TODO add normal map
     # normal = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
 
@@ -343,37 +364,70 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     if type(clearcoat_roughness) is float:
         clearcoat_roughness = np.sqrt(clearcoat_roughness)
 
-    params.update({
-        'type': 'principled',
-        'base_color': base_color,
-        'spec_tint': specular_tint,
-        'spec_trans': specular_trans,
-        'metallic': metallic,
-        'anisotropic': anisotropic,
-        'roughness': roughness,
-        'sheen': sheen,
-        'sheen_tint': sheen_tint,
-        'clearcoat': clearcoat,
-        'clearcoat_gloss': clearcoat_roughness
-    })
+    # TODO find out an more elegant solution for this
+    # Currently, the solution is to wary principled_BSDF with bump_BSDF since Mitsuba didn't integrate bump mapping in principled_BSDF
+    if bump == None:
+        params.update({
+            'type': 'principled',
+            'base_color': base_color,
+            'spec_tint': specular_tint,
+            'spec_trans': specular_trans,
+            'metallic': metallic,
+            'anisotropic': anisotropic,
+            'roughness': roughness,
+            'sheen': sheen,
+            'sheen_tint': sheen_tint,
+            'clearcoat': clearcoat,
+            'clearcoat_gloss': clearcoat_roughness
+        })
+    else:
+            params.update({
+            'type': 'bumpmap',
+            'bumpmap_bsdf': bump,
+
+            'principled_bsdf': {'type': 'principled',
+            'base_color': base_color,
+            'spec_tint': specular_tint,
+            'spec_trans': specular_trans,
+            'metallic': metallic,
+            'anisotropic': anisotropic,
+            'roughness': roughness,
+            'sheen': sheen,
+            'sheen_tint': sheen_tint,
+            'clearcoat': clearcoat,
+            'clearcoat_gloss': clearcoat_roughness},
+        })
 
     # NOTE: Blender uses the 'specular' value for dielectric/metallic reflections and the
     #       'IOR' value for transmission. Mitsuba only has one value for both which can either
     #       be defined by 'specular' or 'eta' ('specular' will be converted into the corresponding
     #       'eta' value by Mitsuba).
     if type(specular_trans) is not float or specular_trans > 0:
-        # Export 'eta' if the material has a transmission component
-        params.update({
-            'eta': max(ior, 1+1e-3),
-        })
-        # Transmissive material should not be twosided
-        return params
+        if bump == None:
+            # Export 'eta' if the material has a transmission component
+            params.update({
+                'eta': max(ior, 1+1e-3),
+            })
+            # Transmissive material should not be twosided
+            return params
+        else:
+            params['principled_bsdf'].update({
+                'eta': max(ior, 1+1e-3),
+            })
+            return params
     else:
-        # Export 'specular' if the material is only reflective
-        params.update({
-            'specular': max(specular, 1e-3)
-        })
-        return two_sided_bsdf(params)
+        if bump == None:
+            # Export 'specular' if the material is only reflective
+            params.update({
+                'specular': max(specular, 1e-3)
+            })
+            return two_sided_bsdf(params)
+        else:
+            # Export 'specular' if the material is only reflective
+            params['principled_bsdf'].update({
+                'specular': max(specular, 1e-3)
+            })
+            return two_sided_bsdf(params)
 
 
 #TODO: Add more support for other materials: refraction, transparent, translucent

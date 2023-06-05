@@ -130,7 +130,7 @@ class ExportContext:
             raise ValueError("Invalid logging level '%s'!" % level)
         Log(log_level[level], message)
 
-    def export_texture(self, image):
+    def export_texture(self, image, suffix=''):
         """
         Return the path to a texture.
         Ensure the image is on disk and of a correct type
