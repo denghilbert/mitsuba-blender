@@ -37,18 +37,32 @@ def export_color_ramp_node(export_ctx, tex_node):
 
     return params
 
-def roughness_ramp(color_ramp_elements, img_pixels):
+def roughness_ramp(node, color_ramp, export_ctx):
+    # roughness ramp for linear interpolation
+    tex_node = node.inputs['Fac'].links[0].from_node
+    color_ramp_elements = list(color_ramp.elements)
+
+    # record original texture value
+    ori_pixels = tex_node.image.pixels[:] 
+    img_pixels = np.asarray(ori_pixels).reshape(-1, 4)[:, :2]
+
     color_ramp_elements_pos = np.array([item.position for item in color_ramp_elements])
     color_ramp_elements_colors = np.array([item.color for item in color_ramp_elements])
 
     inter_pos = color_ramp_elements_pos[np.newaxis, :, np.newaxis].repeat(img_pixels.shape[0], axis=0)
     weight = abs(inter_pos - img_pixels[:, :, np.newaxis])
     inter_color = color_ramp_elements_colors[np.newaxis, :, :].repeat(img_pixels.shape[0], axis=0)
-    
+
     img = (inter_color * weight) / (weight.sum(axis=1, keepdims=True))
     img = img.sum(axis=1, keepdims=True).reshape(-1)
 
-    return tuple(img)
+    tex_node.image.pixels[:] = tuple(img)
+    # export interpolated texture as roughness
+    params = export_color_ramp_node(export_ctx, tex_node)
+    # give original texture value back
+    tex_node.image.pixels[:] = ori_pixels
+
+    return params
 
 
 def convert_float_texture_node(export_ctx, socket):
@@ -64,22 +78,12 @@ def convert_float_texture_node(export_ctx, socket):
             if node.bl_label == 'ColorRamp':
                 color_ramp = node.color_ramp
                 if color_ramp.interpolation == 'LINEAR':
-                    # roughness ramp for linear interpolation
-                    tex_node = node.inputs['Fac'].links[0].from_node
-                    color_ramp_elements = list(color_ramp.elements)
-
-                    # record original texture value
-                    ori_pixels = tex_node.image.pixels[:] 
-                    img_pixels = np.asarray(ori_pixels).reshape(-1, 4)[:, :2]
-                    tex_node.image.pixels[:] = roughness_ramp(color_ramp_elements, img_pixels)
-                    # export interpolated texture as roughness
-                    params = export_color_ramp_node(export_ctx, tex_node)
-                    # give original texture value back
-                    tex_node.image.pixels[:] = ori_pixels
+                    params = roughness_ramp(node, color_ramp, export_ctx)
                 else:
-                    raise NotImplementedError( "Other interpolation convertor except LINEAR is not supported.")
+                    raise NotImplementedError( "Other interpolation convertor except LINEAR is not supported yet.")
             else:
-                raise NotImplementedError( "Other convertor except ColorRamp is not supported.")
+                raise NotImplementedError( "Other convertor except ColorRamp is not supported yet.")
+
         else:
             raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
 
@@ -327,6 +331,11 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     sheen_tint = convert_float_texture_node(export_ctx, current_node.inputs['Sheen Tint'])
     clearcoat = convert_float_texture_node(export_ctx, current_node.inputs['Clearcoat'])
     clearcoat_roughness = convert_float_texture_node(export_ctx, current_node.inputs['Clearcoat Roughness'])
+
+    # warp principled_materials with bump or normal map
+    # bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
+    #TODO add normal map
+    # normal = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
 
     # Undo default roughness transform done by the exporter
     if type(roughness) is float:
