@@ -67,10 +67,15 @@ def convert_float_texture_node(export_ctx, socket):
                     # roughness ramp for linear interpolation
                     tex_node = node.inputs['Fac'].links[0].from_node
                     color_ramp_elements = list(color_ramp.elements)
-                    img_pixels = np.asarray(tex_node.image.pixels[:]).reshape(-1, 4)[:, :2]
+
+                    # record original texture value
+                    ori_pixels = tex_node.image.pixels[:] 
+                    img_pixels = np.asarray(ori_pixels).reshape(-1, 4)[:, :2]
                     tex_node.image.pixels[:] = roughness_ramp(color_ramp_elements, img_pixels)
                     # export interpolated texture as roughness
                     params = export_color_ramp_node(export_ctx, tex_node)
+                    # give original texture value back
+                    tex_node.image.pixels[:] = ori_pixels
                 else:
                     raise NotImplementedError( "Other interpolation convertor except LINEAR is not supported.")
             else:
