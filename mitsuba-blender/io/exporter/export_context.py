@@ -150,6 +150,7 @@ class ExportContext:
             name += texture_exts[image.file_format]
         else:
             name = "%s%s" % (image.name, texture_exts[image.file_format])
+        name = os.path.splitext(name)[0] + suffix + os.path.splitext(name)[1]
         target_path = os.path.join(textures_folder, name)
         if not os.path.isdir(textures_folder):
             os.makedirs(textures_folder)

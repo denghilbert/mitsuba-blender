@@ -6,13 +6,13 @@ import imageio
 RoughnessMode = {'GGX': 'ggx', 'BECKMANN': 'beckmann', 'ASHIKHMIN_SHIRLEY':'beckmann', 'MULTI_GGX':'ggx'}
 #TODO: update when other distributions are supported
 
-def export_texture_node(export_ctx, tex_node):
+def export_texture_node(export_ctx, tex_node, suffix=''):
     params = {
         'type':'bitmap'
     }
     #get the relative path to the copied texture from the full path to the original texture
-    params['filename'] = export_ctx.export_texture(tex_node.image)
-    #TODO: texture transform (mapping node)
+    params['filename'] = export_ctx.export_texture(tex_node.image, suffix)
+    #YM: TODO: texture transform (mapping node)
     if tex_node.image.colorspace_settings.name in ['Non-Color', 'Raw', 'Linear']:
         #non color data, tell mitsuba not to apply gamma conversion to it
         params['raw'] = True
@@ -23,13 +23,13 @@ def export_texture_node(export_ctx, tex_node):
 
 
 
-def export_color_ramp_node(export_ctx, tex_node):
+def export_color_ramp_node(export_ctx, tex_node, suffix=''):
     params = {
         'type':'bitmap'
     }
     #get the relative path to the copied texture from the full path to the original texture
-    params['filename'] = export_ctx.export_texture(tex_node.image)
-    #TODO: texture transform (mapping node)
+    params['filename'] = export_ctx.export_texture(tex_node.image, suffix)
+    #YM: TODO: texture transform (mapping node)
     if tex_node.image.colorspace_settings.name in ['Non-Color', 'Raw', 'Linear']:
         #non color data, tell mitsuba not to apply gamma conversion to it
         params['raw'] = True
@@ -59,25 +59,25 @@ def roughness_ramp(node, color_ramp, export_ctx):
 
     tex_node.image.pixels[:] = tuple(img)
     # export interpolated texture as roughness
-    params = export_color_ramp_node(export_ctx, tex_node)
+    params = export_color_ramp_node(export_ctx, tex_node, '_roughness')
     # give original texture value back
     tex_node.image.pixels[:] = ori_pixels
 
     return params
 
 def bump_normal(node, export_ctx):
-    #TODO mitsuba has invert bump mapping?
+    #YM: TODO mitsuba has invert bump mapping?
     if_invert = node.invert
-    #TODO Figure out how to use distance and strength.... what exactly is full bump mapping???
+    #YM: TODO Figure out how to use distance and strength.... what exactly is full bump mapping???
     strength = node.inputs['Strength'].default_value
     distance = node.inputs['Distance'].default_value
     tex_node = node.inputs['Height'].links[0].from_node
 
-    bump_value = np.array(tex_node.image.pixels[:]) * 0.9
+    bump_value = np.array(tex_node.image.pixels[:]) * strength
     bump_value[::-4] = 1.
     tex_node.image.pixels[:] = tuple(bump_value)
-    params = export_texture_node(export_ctx, tex_node)
-    bump_value = bump_value / 0.9
+    params = export_texture_node(export_ctx, tex_node, '_bump')
+    bump_value = bump_value / strength
     bump_value[::-4] = 1.
     tex_node.image.pixels[:] = tuple(bump_value)
 
@@ -91,7 +91,6 @@ def convert_float_texture_node(export_ctx, socket):
 
         if node.type == "TEX_IMAGE":
             params = export_texture_node(export_ctx, node)
-        #TODO: texture transform (color_ramp node)
         elif node.type == "VALTORGB":
             if node.bl_label == 'ColorRamp':
                 color_ramp = node.color_ramp
@@ -355,7 +354,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
 
     # warp principled_materials with bump or normal map
     bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
-    #TODO add normal map
+    #YM: TODO add normal map
     # normal = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
 
     # Undo default roughness transform done by the exporter
@@ -364,7 +363,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     if type(clearcoat_roughness) is float:
         clearcoat_roughness = np.sqrt(clearcoat_roughness)
 
-    # TODO find out an more elegant solution for this
+    #YM: TODO find out an more elegant solution for this
     # Currently, the solution is to wary principled_BSDF with bump_BSDF since Mitsuba didn't integrate bump mapping in principled_BSDF
     if bump == None:
         params.update({
