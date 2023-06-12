@@ -72,6 +72,7 @@ def bump_normal(node, export_ctx):
     strength = node.inputs['Strength'].default_value
     distance = node.inputs['Distance'].default_value
     tex_node = node.inputs['Height'].links[0].from_node
+    
 
     bump_value = np.array(tex_node.image.pixels[:]) * strength
     bump_value[::-4] = 1.

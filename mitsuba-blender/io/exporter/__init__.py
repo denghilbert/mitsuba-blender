@@ -60,7 +60,6 @@ class SceneConverter:
                 'max_depth': b_scene.cycles.max_bounces
             }
         self.export_ctx.data_add(integrator)
-
         materials.export_world(self.export_ctx, b_scene.world, self.ignore_background)
 
         # Establish list of particle objects
