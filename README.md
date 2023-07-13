@@ -1,7 +1,7 @@
 ![Addon Banner](res/banner.jpg)
 
 # Mitsuba Blender Add-on
-
+#
 [![Nightly Release](https://github.com/mitsuba-renderer/mitsuba-blender/actions/workflows/nightly_release.yml/badge.svg)](https://github.com/mitsuba-renderer/mitsuba-blender/actions/workflows/nightly_release.yml)
 
 This add-on integrates the Mitsuba renderer into Blender.
