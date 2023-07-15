@@ -124,22 +124,37 @@ def convert_color_texture_node(export_ctx, socket):
 
         if node.type == "TEX_IMAGE":
             params = export_texture_node(export_ctx, node)
-
         elif node.type == "RGB":
             # input rgb node
-            # node.color is a function to get custom color of the node body not base_color!!!!!!
+            # node.color is a function to get custom color of the node in Blender UI not base_color!!!!!!
             # params = export_ctx.spectrum(node.color)
             base_color = list(node.outputs['Color'].default_value)
             params = export_ctx.spectrum(Color((base_color[0], base_color[1], base_color[2])))
-
         elif node.type == "VERTEX_COLOR":
             params = {
                 'type': 'mesh_attribute',
                 'name': 'vertex_%s' % node.layer_name
             }
+        elif node.type == "VALTORGB":
+            converter = convert_color_texture_node(export_ctx, node.inputs['Fac'])
+            params = converter
+            if node.bl_label == "ColorRamp":
+                color_ramp = converter
+                color_ramp['type'] = 'color_ramp'
+                if node.color_ramp.color_mode == 'RGB':
+                    color_ramp['mode'] = node.color_ramp.interpolation
+                    color_bands = list(node.color_ramp.elements)
+                    color_ramp['num_band'] = len(color_bands)
+                    for index in range(len(color_bands)):
+                        color_band_node = list(node.color_ramp.elements)[index]
+                        color_ramp['pos' + str(index)] = color_band_node.position
+                        # TODO: figure out how to use alpha in color ramp
+                        color_ramp['color' + str(index)] = list(list(node.color_ramp.elements)[index].color)[:3]
+                else:
+                    raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
+            a = 1
         else:
             raise NotImplementedError("Node type %s is not supported. Only texture & RGB nodes are supported for color inputs" % node.type)
-
     else:
         params = export_ctx.spectrum(socket.default_value)
 
@@ -355,7 +370,8 @@ def convert_principled_materials_cycles(export_ctx, current_node):
 
     # warp principled_materials with bump or normal map
     bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
-    #YM: TODO add normal map
+    #YM: TODO: figure out the difference of nomalmap and bumpmap in Blender
+    normal = None
     # normal = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
 
     # Undo default roughness transform done by the exporter
@@ -364,7 +380,6 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     if type(clearcoat_roughness) is float:
         clearcoat_roughness = np.sqrt(clearcoat_roughness)
 
-    #YM: TODO find out an more elegant solution for this
     # Currently, the solution is to wary principled_BSDF with bump_BSDF since Mitsuba didn't integrate bump mapping in principled_BSDF
     if bump == None:
         params.update({
@@ -381,22 +396,41 @@ def convert_principled_materials_cycles(export_ctx, current_node):
             'clearcoat_gloss': clearcoat_roughness
         })
     else:
+        if normal == None:
             params.update({
-            'type': 'bumpmap',
-            'bumpmap_bsdf': bump,
+                'type': 'bumpmap',
+                'bumpmap_bsdf': bump,
 
-            'principled_bsdf': {'type': 'principled',
-            'base_color': base_color,
-            'spec_tint': specular_tint,
-            'spec_trans': specular_trans,
-            'metallic': metallic,
-            'anisotropic': anisotropic,
-            'roughness': roughness,
-            'sheen': sheen,
-            'sheen_tint': sheen_tint,
-            'clearcoat': clearcoat,
-            'clearcoat_gloss': clearcoat_roughness},
-        })
+                'principled_bsdf': {'type': 'principled',
+                'base_color': base_color,
+                'spec_tint': specular_tint,
+                'spec_trans': specular_trans,
+                'metallic': metallic,
+                'anisotropic': anisotropic,
+                'roughness': roughness,
+                'sheen': sheen,
+                'sheen_tint': sheen_tint,
+                'clearcoat': clearcoat,
+                'clearcoat_gloss': clearcoat_roughness},
+            })
+        else:
+            params.update({
+                'type': 'normalmap',
+                'normal_bsdf': {'type': 'bumpmap',
+                'bumpmap_bsdf': bump,
+
+                'principled_bsdf': {'type': 'principled',
+                'base_color': base_color,
+                'spec_tint': specular_tint,
+                'spec_trans': specular_trans,
+                'metallic': metallic,
+                'anisotropic': anisotropic,
+                'roughness': roughness,
+                'sheen': sheen,
+                'sheen_tint': sheen_tint,
+                'clearcoat': clearcoat,
+                'clearcoat_gloss': clearcoat_roughness},}
+            })
 
     # NOTE: Blender uses the 'specular' value for dielectric/metallic reflections and the
     #       'IOR' value for transmission. Mitsuba only has one value for both which can either
