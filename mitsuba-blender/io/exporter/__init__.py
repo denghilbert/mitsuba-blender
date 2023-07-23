@@ -34,6 +34,10 @@ class SceneConverter:
 
     def set_path(self, name, split_files=False):
         from mitsuba.python.xml import WriteXML
+        # import os
+        # import mitsuba
+        # print("*"*50)
+        # print(os.path.abspath(mitsuba.__file__))
         # Ideally, this should only be created if we want to write a scene.
         # For now we need it to save meshes and packed textures.
         # TODO: get rid of all writing to disk when creating the dict

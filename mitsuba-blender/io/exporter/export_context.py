@@ -90,7 +90,7 @@ class ExportContext:
         '''
         if mts_dict is None or not isinstance(mts_dict, dict) or len(mts_dict) == 0 or 'type' not in mts_dict:
             return False
-
+ 
         if not name:
             try:
                 name = mts_dict['id']

@@ -137,8 +137,9 @@ def convert_color_texture_node(export_ctx, socket):
             }
         elif node.type == "VALTORGB":
             converter = convert_color_texture_node(export_ctx, node.inputs['Fac'])
-            params = converter
-            if node.bl_label == "ColorRamp":
+            
+            # catch return value of bitmap and convert it to direct connected color_ramp
+            if node.inputs['Fac'].links[0].from_node.bl_label == 'Image Texture':
                 color_ramp = converter
                 color_ramp['type'] = 'color_ramp'
                 if node.color_ramp.color_mode == 'RGB':
@@ -149,10 +150,28 @@ def convert_color_texture_node(export_ctx, socket):
                         color_band_node = list(node.color_ramp.elements)[index]
                         color_ramp['pos' + str(index)] = color_band_node.position
                         # TODO: figure out how to use alpha in color ramp
-                        color_ramp['color' + str(index)] = list(list(node.color_ramp.elements)[index].color)[:3]
+                        color_ramp['color' + str(index)] = {'type': 'rgb', 'value': list(list(node.color_ramp.elements)[index].color)[:3]}
                 else:
                     raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
-            a = 1
+                params = color_ramp
+            # catch the value of color_ramp and wrap with another one
+            elif node.inputs['Fac'].links[0].from_node.bl_label == 'ColorRamp':
+                color_ramp = {}
+                color_ramp['type'] = 'color_ramp'
+                color_ramp['factor'] = converter
+                if node.color_ramp.color_mode == 'RGB':
+                    color_ramp['mode'] = node.color_ramp.interpolation
+                    color_bands = list(node.color_ramp.elements)
+                    color_ramp['num_band'] = len(color_bands)
+                    for index in range(len(color_bands)):
+                        color_band_node = list(node.color_ramp.elements)[index]
+                        color_ramp['pos' + str(index)] = color_band_node.position
+                        # TODO: figure out how to use alpha in color ramp
+                        color_ramp['color' + str(index)] = {'type': 'rgb', 'value': list(list(node.color_ramp.elements)[index].color)[:3]}
+                else:
+                    raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
+                params = color_ramp
+        
         else:
             raise NotImplementedError("Node type %s is not supported. Only texture & RGB nodes are supported for color inputs" % node.type)
     else:
