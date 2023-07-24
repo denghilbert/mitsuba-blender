@@ -93,16 +93,52 @@ def convert_float_texture_node(export_ctx, socket):
         if node.type == "TEX_IMAGE":
             params = export_texture_node(export_ctx, node)
         elif node.type == "VALTORGB":
-            if node.bl_label == 'ColorRamp':
-                color_ramp = node.color_ramp
-                if color_ramp.interpolation == 'LINEAR':
-                    params = roughness_ramp(node, color_ramp, export_ctx)
+            converter = convert_color_texture_node(export_ctx, node.inputs['Fac'])
+            
+            # catch return value of bitmap and convert it to direct connected color_ramp
+            if node.inputs['Fac'].links[0].from_node.bl_label == 'Image Texture':
+                color_ramp = converter
+                color_ramp['type'] = 'color_ramp'
+                if node.color_ramp.color_mode == 'RGB':
+                    color_ramp['mode'] = node.color_ramp.interpolation.lower()
+                    color_bands = list(node.color_ramp.elements)
+                    color_ramp['num_band'] = len(color_bands)
+                    for index in range(len(color_bands)):
+                        color_band_node = list(node.color_ramp.elements)[index]
+                        color_ramp['pos' + str(index)] = color_band_node.position
+                        # TODO: figure out how to use alpha in color ramp
+                        color_ramp['color' + str(index)] = {'type': 'rgb', 'value': list(list(node.color_ramp.elements)[index].color)[:3]}
                 else:
-                    raise NotImplementedError( "Other interpolation convertor except LINEAR is not supported yet.")
-            else:
-                raise NotImplementedError( "Other convertor except ColorRamp is not supported yet.")
+                    raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
+                params = color_ramp
+            # catch the value of color_ramp and wrap with another one
+            elif node.inputs['Fac'].links[0].from_node.bl_label == 'ColorRamp':
+                color_ramp = {}
+                color_ramp['type'] = 'color_ramp'
+                color_ramp['factor'] = converter
+                if node.color_ramp.color_mode == 'RGB':
+                    color_ramp['mode'] = node.color_ramp.interpolation.lower()
+                    color_bands = list(node.color_ramp.elements)
+                    color_ramp['num_band'] = len(color_bands)
+                    for index in range(len(color_bands)):
+                        color_band_node = list(node.color_ramp.elements)[index]
+                        color_ramp['pos' + str(index)] = color_band_node.position
+                        # TODO: figure out how to use alpha in color ramp
+                        color_ramp['color' + str(index)] = {'type': 'rgb', 'value': list(list(node.color_ramp.elements)[index].color)[:3]}
+                else:
+                    raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
+                params = color_ramp
         elif node.type == 'BUMP':
-            params = bump_normal(node, export_ctx)
+            # params = bump_normal(node, export_ctx)
+            converter = convert_color_texture_node(export_ctx, node.inputs['Height'])
+            bump_map = converter
+            if bump_map['type'] == 'bitmap':
+                bump_map['raw'] = True
+
+            strength = node.inputs['Strength'].default_value
+            distance = node.inputs['Distance'].default_value # TODO: figure out the distance used in Blender
+
+            return [bump_map, strength]
         else:
             raise NotImplementedError( "Node type %s is not supported. Only texture nodes are supported for float inputs" % node.type)
 
@@ -143,7 +179,7 @@ def convert_color_texture_node(export_ctx, socket):
                 color_ramp = converter
                 color_ramp['type'] = 'color_ramp'
                 if node.color_ramp.color_mode == 'RGB':
-                    color_ramp['mode'] = node.color_ramp.interpolation
+                    color_ramp['mode'] = node.color_ramp.interpolation.lower()
                     color_bands = list(node.color_ramp.elements)
                     color_ramp['num_band'] = len(color_bands)
                     for index in range(len(color_bands)):
@@ -160,7 +196,7 @@ def convert_color_texture_node(export_ctx, socket):
                 color_ramp['type'] = 'color_ramp'
                 color_ramp['factor'] = converter
                 if node.color_ramp.color_mode == 'RGB':
-                    color_ramp['mode'] = node.color_ramp.interpolation
+                    color_ramp['mode'] = node.color_ramp.interpolation.lower()
                     color_bands = list(node.color_ramp.elements)
                     color_ramp['num_band'] = len(color_bands)
                     for index in range(len(color_bands)):
@@ -171,7 +207,9 @@ def convert_color_texture_node(export_ctx, socket):
                 else:
                     raise NotImplementedError("Type %s is not supported in ColorRamp. Only RGB mode are supported." % node.color_ramp.color_mpde)
                 params = color_ramp
-        
+        elif node.type == 'CURVE_RGB': # TODO: implement curve_rgb in mitsuba
+            converter = convert_color_texture_node(export_ctx, node.inputs['Color'])
+            params = converter
         else:
             raise NotImplementedError("Node type %s is not supported. Only texture & RGB nodes are supported for color inputs" % node.type)
     else:
@@ -375,7 +413,7 @@ def convert_mix_materials_cycles(export_ctx, current_node):#TODO: test and fix t
 def convert_principled_materials_cycles(export_ctx, current_node):
     params = {}
     base_color = convert_color_texture_node(export_ctx, current_node.inputs['Base Color'])
-    specular = current_node.inputs['Specular'].default_value
+    specular = convert_float_texture_node(export_ctx, current_node.inputs['Specular'])
     specular_tint = convert_float_texture_node(export_ctx, current_node.inputs['Specular Tint'])
     specular_trans = convert_float_texture_node(export_ctx, current_node.inputs['Transmission'])
     ior = current_node.inputs['IOR'].default_value
@@ -388,10 +426,10 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     clearcoat_roughness = convert_float_texture_node(export_ctx, current_node.inputs['Clearcoat Roughness'])
 
     # warp principled_materials with bump or normal map
-    bump = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
+    bump_strength = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
     #YM: TODO: figure out the difference of nomalmap and bumpmap in Blender
-    normal = None
-    # normal = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
+    normal_map = None
+    # normal_map = convert_float_texture_node(export_ctx, current_node.inputs['Normal'])
 
     # Undo default roughness transform done by the exporter
     if type(roughness) is float:
@@ -400,7 +438,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
         clearcoat_roughness = np.sqrt(clearcoat_roughness)
 
     # Currently, the solution is to wary principled_BSDF with bump_BSDF since Mitsuba didn't integrate bump mapping in principled_BSDF
-    if bump == None:
+    if bump_strength == None:
         params.update({
             'type': 'principled',
             'base_color': base_color,
@@ -415,40 +453,46 @@ def convert_principled_materials_cycles(export_ctx, current_node):
             'clearcoat_gloss': clearcoat_roughness
         })
     else:
-        if normal == None:
+        if normal_map == None:
             params.update({
                 'type': 'bumpmap',
-                'bumpmap_bsdf': bump,
-
-                'principled_bsdf': {'type': 'principled',
-                'base_color': base_color,
-                'spec_tint': specular_tint,
-                'spec_trans': specular_trans,
-                'metallic': metallic,
-                'anisotropic': anisotropic,
-                'roughness': roughness,
-                'sheen': sheen,
-                'sheen_tint': sheen_tint,
-                'clearcoat': clearcoat,
-                'clearcoat_gloss': clearcoat_roughness},
+                'bumpmap_tex': bump_strength[0],
+                'scale': bump_strength[1],
+                'principled_bsdf': {
+                    'type': 'principled',
+                    'base_color': base_color,
+                    'spec_tint': specular_tint,
+                    'spec_trans': specular_trans,
+                    'metallic': metallic,
+                    'anisotropic': anisotropic,
+                    'roughness': roughness,
+                    'sheen': sheen,
+                    'sheen_tint': sheen_tint,
+                    'clearcoat': clearcoat,
+                    'clearcoat_gloss': clearcoat_roughness
+                },
             })
         else:
             params.update({
                 'type': 'normalmap',
-                'normal_bsdf': {'type': 'bumpmap',
-                'bumpmap_bsdf': bump,
-
-                'principled_bsdf': {'type': 'principled',
-                'base_color': base_color,
-                'spec_tint': specular_tint,
-                'spec_trans': specular_trans,
-                'metallic': metallic,
-                'anisotropic': anisotropic,
-                'roughness': roughness,
-                'sheen': sheen,
-                'sheen_tint': sheen_tint,
-                'clearcoat': clearcoat,
-                'clearcoat_gloss': clearcoat_roughness},}
+                'normal_bsdf': {
+                    'type': 'bumpmap',
+                    'bumpmap_tex': bump_strength[0],
+                    'scale': bump_strength[1],
+                    'principled_bsdf': {
+                        'type': 'principled',
+                        'base_color': base_color,
+                        'spec_tint': specular_tint,
+                        'spec_trans': specular_trans,
+                        'metallic': metallic,
+                        'anisotropic': anisotropic,
+                        'roughness': roughness,
+                        'sheen': sheen,
+                        'sheen_tint': sheen_tint,
+                        'clearcoat': clearcoat,
+                        'clearcoat_gloss': clearcoat_roughness
+                    },
+                }
             })
 
     # NOTE: Blender uses the 'specular' value for dielectric/metallic reflections and the
@@ -456,7 +500,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
     #       be defined by 'specular' or 'eta' ('specular' will be converted into the corresponding
     #       'eta' value by Mitsuba).
     if type(specular_trans) is not float or specular_trans > 0:
-        if bump == None:
+        if bump_strength == None:
             # Export 'eta' if the material has a transmission component
             params.update({
                 'eta': max(ior, 1+1e-3),
@@ -469,7 +513,7 @@ def convert_principled_materials_cycles(export_ctx, current_node):
             })
             return params
     else:
-        if bump == None:
+        if bump_strength == None:
             # Export 'specular' if the material is only reflective
             params.update({
                 'specular': max(specular, 1e-3)
@@ -520,7 +564,10 @@ def b_material_to_dict(export_ctx, b_mat):
             output_node_id = 'Material Output'
             if output_node_id in b_mat.node_tree.nodes:
                 output_node = b_mat.node_tree.nodes[output_node_id]
-                surface_node = output_node.inputs["Surface"].links[0].from_node
+                if output_node.inputs["Surface"].is_linked:
+                    surface_node = output_node.inputs["Surface"].links[0].from_node
+                else:
+                    raise NotImplementedError("Manual Bug! BSDF model without any input")
                 mat_params = cycles_material_to_dict(export_ctx, surface_node)
             else:
                 export_ctx.log(f'Export of material {b_mat.name} failed: Cannot find material output node. Exporting a dummy material instead.', 'WARN')
