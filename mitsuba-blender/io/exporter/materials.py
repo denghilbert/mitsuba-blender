@@ -454,24 +454,43 @@ def convert_principled_materials_cycles(export_ctx, current_node):
         })
     else:
         if normal_map == None:
-            params.update({
-                'type': 'bumpmap',
-                'bumpmap_tex': bump_strength[0],
-                'scale': bump_strength[1],
-                'principled_bsdf': {
-                    'type': 'principled',
-                    'base_color': base_color,
-                    'spec_tint': specular_tint,
-                    'spec_trans': specular_trans,
-                    'metallic': metallic,
-                    'anisotropic': anisotropic,
-                    'roughness': roughness,
-                    'sheen': sheen,
-                    'sheen_tint': sheen_tint,
-                    'clearcoat': clearcoat,
-                    'clearcoat_gloss': clearcoat_roughness
-                },
-            })
+            if bump_strength[0]['type'] == 'rgb':
+                params.update({
+                    'type': 'bumpmap',
+                    'scale': bump_strength[1],
+                    'principled_bsdf': {
+                        'type': 'principled',
+                        'base_color': base_color,
+                        'spec_tint': specular_tint,
+                        'spec_trans': specular_trans,
+                        'metallic': metallic,
+                        'anisotropic': anisotropic,
+                        'roughness': roughness,
+                        'sheen': sheen,
+                        'sheen_tint': sheen_tint,
+                        'clearcoat': clearcoat,
+                        'clearcoat_gloss': clearcoat_roughness
+                    },
+                })
+            else:
+                params.update({
+                    'type': 'bumpmap',
+                    'bumpmap_tex': bump_strength[0],
+                    'scale': bump_strength[1],
+                    'principled_bsdf': {
+                        'type': 'principled',
+                        'base_color': base_color,
+                        'spec_tint': specular_tint,
+                        'spec_trans': specular_trans,
+                        'metallic': metallic,
+                        'anisotropic': anisotropic,
+                        'roughness': roughness,
+                        'sheen': sheen,
+                        'sheen_tint': sheen_tint,
+                        'clearcoat': clearcoat,
+                        'clearcoat_gloss': clearcoat_roughness
+                    },
+                })
         else:
             params.update({
                 'type': 'normalmap',
